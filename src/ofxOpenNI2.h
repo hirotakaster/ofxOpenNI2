@@ -75,6 +75,10 @@ public:
     nite::UserData  getUserData(int id);
     ofPixels        getTrackerPixels();
     ofTexture       getTrackerTexture();
+
+	ofMutex			colorMutex;
+	ofMutex			depthMutex;
+	ofMutex			trackerMutex;
 };
 
 class ofxOpenNIScopedLock {

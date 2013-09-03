@@ -20,7 +20,7 @@ void ofxOpenNI2::setup() {
     openni::Status rc = openni::OpenNI::initialize();
     if (rc != openni::STATUS_OK) {
         cout << "Failed to initialize OpenNI:" << openni::OpenNI::getExtendedError() << endl;
-        return rc;
+        return;
     }
     
     const char* deviceUri = openni::ANY_DEVICE;
@@ -28,7 +28,7 @@ void ofxOpenNI2::setup() {
     rc = device.open(deviceUri);
     if (rc != openni::STATUS_OK) {
         cout << "Failed to open device:" << openni::OpenNI::getExtendedError() << endl;
-        return rc;
+        return;
     }
     
     device.setDepthColorSyncEnabled(true);
@@ -41,14 +41,13 @@ void ofxOpenNI2::threadedFunction() {
 }
 
 void ofxOpenNI2::checkStream() {
-    ofxOpenNIScopedLock scopedLock(mutex);
-    
     // check depth stream
     if (useDepth) {
         depthStream.readFrame(&depthFrame);
         calculateHistogram(depthHist, MAX_DEPTH, depthFrame);
 
         const openni::DepthPixel* depthRow = (const openni::DepthPixel*)depthFrame.getData();
+		ofxOpenNIScopedLock scopedLock(depthMutex);
         for(int y = 0; y < height; y++){
             for(int x = 0; x < width; x++, depthRow++){
                 depthPixels.setColor(x, y, *depthRow);
@@ -72,6 +71,7 @@ void ofxOpenNI2::checkStream() {
     // check color stream    
     if (useColor) {
         colorStream.readFrame(&colorFrame);
+		ofxOpenNIScopedLock scopedLock(colorMutex);
         colorPixels.setFromPixels((unsigned char *)colorFrame.getData(), colorFrame.getWidth(), colorFrame.getHeight(), OF_IMAGE_COLOR);
     }
 
@@ -82,6 +82,7 @@ void ofxOpenNI2::checkStream() {
             cout << "Get next frame failed" << endl;
         } else {
             const nite::Array<nite::UserData>& users = userTrackerFrame.getUsers();
+			ofxOpenNIScopedLock scopedLock(trackerMutex);
 
             // clear tracked data
             trackedUserIds.clear();
@@ -233,57 +234,55 @@ void ofxOpenNI2::initTracker() {
     useTracker = true;
     nite::NiTE::initialize();
     if (userTracker.create(&device) != nite::STATUS_OK) {
-        return openni::STATUS_ERROR;
+        return;
     }
 }
 
 ofPixels ofxOpenNI2::getColorPixels() {
-    ofxOpenNIScopedLock scopedLock(mutex);
+    ofxOpenNIScopedLock scopedLock(colorMutex);
     return colorPixels;
 }
 
 ofTexture ofxOpenNI2::getColorTexture() {
-    ofxOpenNIScopedLock scopedLock(mutex);
+    ofxOpenNIScopedLock scopedLock(colorMutex);
     colorTexture.loadData(colorPixels);
     return colorTexture;
 }
 
 ofPixels ofxOpenNI2::getDepthPixels() {
-    ofxOpenNIScopedLock scopedLock(mutex);
+    ofxOpenNIScopedLock scopedLock(depthMutex);
     return depthPixels;
 }
 
 ofTexture ofxOpenNI2::getDepthTexture() {
-    ofxOpenNIScopedLock scopedLock(mutex);
+    ofxOpenNIScopedLock scopedLock(depthMutex);
     depthTexture.loadData(depthPixels.getPixels(), width, height, GL_RGBA);
     return depthTexture;
 }
 
 ofPixels ofxOpenNI2::getTrackerPixels() {
-    ofxOpenNIScopedLock scopedLock(mutex);
+    ofxOpenNIScopedLock scopedLock(trackerMutex);
     return userTrackerPixels;
 }
 
 ofTexture ofxOpenNI2::getTrackerTexture() {
-    ofxOpenNIScopedLock scopedLock(mutex);
+    ofxOpenNIScopedLock scopedLock(trackerMutex);
     depthTexture.loadData(userTrackerPixels.getPixels(), width, height, GL_RGBA);
     return depthTexture;
 }
 
 
 float ofxOpenNI2::getDepth(int x, int y) {
-    ofxOpenNIScopedLock scopedLock(mutex);
+    ofxOpenNIScopedLock scopedLock(depthMutex);
     if (x > width || y > height || x < 0 || y < 0) return 0;
     return depthPixels[depthPixels.getPixelIndex(x, y)];
 }
 
 int ofxOpenNI2::getTrackedUsers() {
-    ofxOpenNIScopedLock scopedLock(mutex);
     return trackedUserIds.size();
 }
 
 nite::UserData ofxOpenNI2::getUserData(int id) {
-    ofxOpenNIScopedLock scopedLock(mutex);
-    if (id >= trackedUserIds.size()) return (nite::UserData &)defUserData;
+	if (id >= trackedUserIds.size()) return (nite::UserData &)defUserData;
     return trackedUsers[trackedUserIds[id]];
 }
